@@ -16,7 +16,11 @@ include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
 # Now build our tools
-add_executable(Kale src/kaleidoscope.cpp)
+add_library(lexer_lib src/lexer.cc)
+add_library(parser_lib src/parser.cc)
+target_link_libraries(parser_lib lexer_lib)
+add_executable(Kale src/kale_main.cc)
+target_link_libraries(Kale parser_lib)
 
 # Find the libraries that correspond to the LLVM components
 # that we wish to use
