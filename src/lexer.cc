@@ -5,7 +5,7 @@
 
 /// gettok - Return the next token from standard input.
 int gettok() {
-  static int LastChar = ' ';
+  int LastChar = ' ';
 
   // Skip any whitespace.
   while (isspace(LastChar))

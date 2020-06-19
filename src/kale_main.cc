@@ -15,7 +15,7 @@
 // Top-Level parsing
 //===----------------------------------------------------------------------===//
 
-static void HandleDefinition() {
+void HandleDefinition() {
   if (ParseDefinition()) {
     fprintf(stderr, "Parsed a function definition.\n");
   } else {
@@ -24,7 +24,7 @@ static void HandleDefinition() {
   }
 }
 
-static void HandleExtern() {
+void HandleExtern() {
   if (ParseExtern()) {
     fprintf(stderr, "Parsed an extern\n");
   } else {
@@ -33,7 +33,7 @@ static void HandleExtern() {
   }
 }
 
-static void HandleTopLevelExpression() {
+void HandleTopLevelExpression() {
   // Evaluate a top-level expression into an anonymous function.
   if (ParseTopLevelExpr()) {
     fprintf(stderr, "Parsed a top-level expr\n");
@@ -44,7 +44,7 @@ static void HandleTopLevelExpression() {
 }
 
 /// top ::= definition | external | expression | ';'
-static void MainLoop() {
+void MainLoop() {
   while (true) {
     fprintf(stderr, "ready> ");
     switch (CurTok) {
