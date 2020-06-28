@@ -3,6 +3,9 @@
 #include <cctype>
 #include "lexer.h"
 
+std::string IdentifierStr; // Filled in if tok_identifier
+double NumVal;             // Filled in if tok_number
+
 /// gettok - Return the next token from standard input.
 int gettok() {
   int LastChar = ' ';

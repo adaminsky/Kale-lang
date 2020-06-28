@@ -15,8 +15,8 @@ enum Token {
   tok_number = -5
 };
 
-static std::string IdentifierStr; // Filled in if tok_identifier
-static double NumVal;             // Filled in if tok_number
+extern std::string IdentifierStr; // Filled in if tok_identifier
+extern double NumVal;             // Filled in if tok_number
 
-int gettok();
+extern int gettok();
 #endif	// LEXER_H

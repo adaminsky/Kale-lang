@@ -1,6 +1,7 @@
 #include "llvm/ADT/STLExtras.h"
-#include "parser.cc"
+#include "parser.h"
 #include "lexer.h"
+#include "ast.h"
 
 #include <algorithm>
 #include <cctype>
@@ -15,28 +16,40 @@
 // Top-Level parsing
 //===----------------------------------------------------------------------===//
 
-void HandleDefinition() {
-  if (ParseDefinition()) {
-    fprintf(stderr, "Parsed a function definition.\n");
+static void HandleDefinition() {
+  if (auto FnAST = ParseDefinition()) {
+    if (auto *FnIR = FnAST->codegen()) {
+      fprintf(stderr, "Parsed a function definition.\n");
+      FnIR->print(errs());
+      fprintf(stderr, "\n");
+    }
   } else {
     // Skip token for error recovery.
     getNextToken();
   }
 }
 
-void HandleExtern() {
-  if (ParseExtern()) {
-    fprintf(stderr, "Parsed an extern\n");
+static void HandleExtern() {
+  if (auto ProtoAST = ParseExtern()) {
+    if (auto *FnIR = ProtoAST->codegen()) {
+      fprintf(stderr, "Parsed an extern\n");
+      FnIR->print(errs());
+      fprintf(stderr, "\n");
+    }
   } else {
     // Skip token for error recovery.
     getNextToken();
   }
 }
 
-void HandleTopLevelExpression() {
+static void HandleTopLevelExpression() {
   // Evaluate a top-level expression into an anonymous function.
-  if (ParseTopLevelExpr()) {
-    fprintf(stderr, "Parsed a top-level expr\n");
+  if (auto FnAST = ParseTopLevelExpr()) {
+    if (auto *FnIR = FnAST->codegen()) {
+      fprintf(stderr, "Parsed a top-level expr\n");
+      FnIR->print(errs());
+      fprintf(stderr, "\n");
+    }
   } else {
     // Skip token for error recovery.
     getNextToken();
@@ -44,7 +57,7 @@ void HandleTopLevelExpression() {
 }
 
 /// top ::= definition | external | expression | ';'
-void MainLoop() {
+static void MainLoop() {
   while (true) {
     fprintf(stderr, "ready> ");
     switch (CurTok) {
@@ -82,8 +95,12 @@ int main() {
   fprintf(stderr, "ready> ");
   getNextToken();
 
+  TheModule = std::make_unique<Module>("my cool jit", TheContext);
+
   // Run the main "interpreter loop" now.
   MainLoop();
+
+  TheModule->print(errs(), nullptr);
 
   return 0;
 }
