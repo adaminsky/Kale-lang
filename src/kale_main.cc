@@ -1,4 +1,14 @@
+#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IR/Verifier.h"
 #include "parser.h"
 #include "lexer.h"
 #include "ast.h"
@@ -16,64 +26,64 @@
 // Top-Level parsing
 //===----------------------------------------------------------------------===//
 
-static void HandleDefinition() {
-  if (auto FnAST = ParseDefinition()) {
+static void HandleDefinition(Parser parser) {
+  if (auto FnAST = parser.ParseDefinition()) {
     if (auto *FnIR = FnAST->codegen()) {
       fprintf(stderr, "Parsed a function definition.\n");
-      FnIR->print(errs());
+      FnIR->print(llvm::errs());
       fprintf(stderr, "\n");
     }
   } else {
     // Skip token for error recovery.
-    getNextToken();
+    parser.getNextToken();
   }
 }
 
-static void HandleExtern() {
-  if (auto ProtoAST = ParseExtern()) {
+static void HandleExtern(Parser parser) {
+  if (auto ProtoAST = parser.ParseExtern()) {
     if (auto *FnIR = ProtoAST->codegen()) {
       fprintf(stderr, "Parsed an extern\n");
-      FnIR->print(errs());
+      FnIR->print(llvm::errs());
       fprintf(stderr, "\n");
     }
   } else {
     // Skip token for error recovery.
-    getNextToken();
+    parser.getNextToken();
   }
 }
 
-static void HandleTopLevelExpression() {
+static void HandleTopLevelExpression(Parser parser) {
   // Evaluate a top-level expression into an anonymous function.
-  if (auto FnAST = ParseTopLevelExpr()) {
+  if (auto FnAST = parser.ParseTopLevelExpr()) {
     if (auto *FnIR = FnAST->codegen()) {
       fprintf(stderr, "Parsed a top-level expr\n");
-      FnIR->print(errs());
+      FnIR->print(llvm::errs());
       fprintf(stderr, "\n");
     }
   } else {
     // Skip token for error recovery.
-    getNextToken();
+    parser.getNextToken();
   }
 }
 
 /// top ::= definition | external | expression | ';'
-static void MainLoop() {
+static void MainLoop(Parser parser) {
   while (true) {
     fprintf(stderr, "ready> ");
-    switch (CurTok) {
+    switch (parser.getNextToken()) {
     case tok_eof:
       return;
     case ';': // ignore top-level semicolons.
-      getNextToken();
+      parser.getNextToken();
       break;
     case tok_def:
-      HandleDefinition();
+      HandleDefinition(parser);
       break;
     case tok_extern:
-      HandleExtern();
+      HandleExtern(parser);
       break;
     default:
-      HandleTopLevelExpression();
+      HandleTopLevelExpression(parser);
       break;
     }
   }
@@ -84,23 +94,24 @@ static void MainLoop() {
 //===----------------------------------------------------------------------===//
 
 int main() {
+  Parser parser;
   // Install standard binary operators.
   // 1 is lowest precedence.
-  BinopPrecedence['<'] = 10;
-  BinopPrecedence['+'] = 20;
-  BinopPrecedence['-'] = 20;
-  BinopPrecedence['*'] = 40; // highest.
+  parser._binopPrecedence['<'] = 10;
+  parser._binopPrecedence['+'] = 20;
+  parser._binopPrecedence['-'] = 20;
+  parser._binopPrecedence['*'] = 40; // highest.
 
   // Prime the first token.
   fprintf(stderr, "ready> ");
-  getNextToken();
+  //getNextToken();
 
-  TheModule = std::make_unique<Module>("my cool jit", TheContext);
+  TheModule = std::make_unique<llvm::Module>("my cool jit", TheContext);
 
   // Run the main "interpreter loop" now.
-  MainLoop();
+  MainLoop(parser);
 
-  TheModule->print(errs(), nullptr);
+  TheModule->print(llvm::errs(), nullptr);
 
   return 0;
 }
