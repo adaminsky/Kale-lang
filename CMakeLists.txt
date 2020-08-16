@@ -21,6 +21,7 @@ add_definitions(${LLVM_DEFINITIONS})
 add_library(lexer_lib src/lexer.cc)
 add_library(parser_lib src/parser.cc)
 add_library(ast_lib src/ast.cc)
+target_link_libraries(parser_lib lexer_lib ast_lib)
 add_executable(Kale src/kale_main.cc)
 
 # Find the libraries that correspond to the LLVM components
@@ -28,5 +29,4 @@ add_executable(Kale src/kale_main.cc)
 llvm_map_components_to_libnames(llvm_libs all)
 
 # Link against LLVM libraries
-target_link_libraries(parser_lib lexer_lib ast_lib)
 target_link_libraries(Kale parser_lib ${llvm_libs})
