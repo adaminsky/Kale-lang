@@ -15,8 +15,11 @@ enum Token {
   tok_number = -5
 };
 
-extern std::string IdentifierStr; // Filled in if tok_identifier
-extern double NumVal;             // Filled in if tok_number
+class Lexer {
+    public:
+        std::string IdentifierStr; // Filled in if tok_identifier
+        double NumVal;             // Filled in if tok_number
+        int gettok();
+};
 
-extern int gettok();
 #endif	// LEXER_H

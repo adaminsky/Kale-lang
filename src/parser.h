@@ -6,57 +6,60 @@
 #include <cstdio>
 #include <string>
 #include "ast.h"
+#include "lexer.h"
 
-extern int CurTok;
-extern int getNextToken();
+class Parser {
+    public:
+        int _curTok;
+        int getNextToken();
+        Lexer lex;
 
-/// BinopPrecedence - This holds the precedence for each binary operator that is
-/// defined.
-extern std::map<char, int> BinopPrecedence;
+        /// BinopPrecedence - This holds the precedence for each binary operator that is
+        /// defined.
+        std::map<char, int> _binopPrecedence;
 
-/// GetTokPrecedence - Get the precedence of the pending binary operator token.
-extern int GetTokPrecedence();
+        /// GetTokPrecedence - Get the precedence of the pending binary operator token.
+        int GetTokPrecedence();
 
-extern std::unique_ptr<ExprAST> ParseExpression();
+        /// numberexpr ::= number
+        std::unique_ptr<ExprAST> ParseNumberExpr();
 
-/// numberexpr ::= number
-extern std::unique_ptr<ExprAST> ParseNumberExpr();
+        /// parenexpr ::= '(' expression ')'
+        std::unique_ptr<ExprAST> ParseParenExpr();
 
-/// parenexpr ::= '(' expression ')'
-extern std::unique_ptr<ExprAST> ParseParenExpr();
+        /// identifierexpr
+        ///   ::= identifier
+        ///   ::= identifier '(' expression* ')'
+        std::unique_ptr<ExprAST> ParseIdentifierExpr();
 
-/// identifierexpr
-///   ::= identifier
-///   ::= identifier '(' expression* ')'
-extern std::unique_ptr<ExprAST> ParseIdentifierExpr();
+        /// primary
+        ///   ::= identifierexpr
+        ///   ::= numberexpr
+        ///   ::= parenexpr
+        std::unique_ptr<ExprAST> ParsePrimary();
 
-/// primary
-///   ::= identifierexpr
-///   ::= numberexpr
-///   ::= parenexpr
-extern std::unique_ptr<ExprAST> ParsePrimary();
+        /// binoprhs
+        ///   ::= ('+' primary)*
+        std::unique_ptr<ExprAST> ParseBinOpRHS(int ExprPrec,
+                std::unique_ptr<ExprAST> LHS);
 
-/// binoprhs
-///   ::= ('+' primary)*
-extern std::unique_ptr<ExprAST> ParseBinOpRHS(int ExprPrec,
-                                              std::unique_ptr<ExprAST> LHS);
+        /// expression
+        ///   ::= primary binoprhs
+        ///
+        std::unique_ptr<ExprAST> ParseExpression();
 
-/// expression
-///   ::= primary binoprhs
-///
-extern std::unique_ptr<ExprAST> ParseExpression();
+        /// prototype
+        ///   ::= id '(' id* ')'
+        std::unique_ptr<PrototypeAST> ParsePrototype();
 
-/// prototype
-///   ::= id '(' id* ')'
-extern std::unique_ptr<PrototypeAST> ParsePrototype();
+        /// definition ::= 'def' prototype expression
+        std::unique_ptr<FunctionAST> ParseDefinition();
 
-/// definition ::= 'def' prototype expression
-extern std::unique_ptr<FunctionAST> ParseDefinition();
+        /// toplevelexpr ::= expression
+        std::unique_ptr<FunctionAST> ParseTopLevelExpr();
 
-/// toplevelexpr ::= expression
-extern std::unique_ptr<FunctionAST> ParseTopLevelExpr();
-
-/// external ::= 'extern' prototype
-extern std::unique_ptr<PrototypeAST> ParseExtern();
+        /// external ::= 'extern' prototype
+        std::unique_ptr<PrototypeAST> ParseExtern();
+};
 
 #endif	// PARSER_H

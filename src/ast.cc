@@ -1,15 +1,11 @@
-#include "ast.h"
-#include "llvm/IR/Value.h"
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/ADT/APFloat.h"
 #include "llvm/IR/Verifier.h"
 
-using namespace llvm;
+#include "ast.h"
 
-LLVMContext TheContext;
-IRBuilder<> Builder(TheContext);
-std::unique_ptr<Module> TheModule;
-std::map<std::string, Value *> NamedValues;
+llvm::LLVMContext TheContext;
+llvm::IRBuilder<> Builder(TheContext);
+std::unique_ptr<llvm::Module> TheModule;
+std::map<std::string, llvm::Value *> NamedValues;
 
 /// LogError* - These are little helper functions for error handling.
 std::unique_ptr<ExprAST> LogError(const char *Str) {
@@ -20,25 +16,25 @@ std::unique_ptr<PrototypeAST> LogErrorP(const char *Str) {
   LogError(Str);
   return nullptr;
 }
-Value *LogErrorV(const char *Str) {
+llvm::Value *LogErrorV(const char *Str) {
   LogError(Str);
   return nullptr;
 }
 
-Value *NumberExprAST::codegen() {
-  return ConstantFP::get(TheContext, APFloat(Val));
+llvm::Value *NumberExprAST::codegen() {
+  return llvm::ConstantFP::get(TheContext, llvm::APFloat(Val));
 }
 
-Value *VariableExprAST::codegen() {
-  Value *V = NamedValues[Name];
+llvm::Value *VariableExprAST::codegen() {
+  llvm::Value *V = NamedValues[Name];
   if (!V)
     return LogErrorV("Unknown variable name");
   return V;
 }
 
-Value *BinaryExprAST::codegen() {
-  Value *L = LHS->codegen();
-  Value *R = RHS->codegen();
+llvm::Value *BinaryExprAST::codegen() {
+  llvm::Value *L = LHS->codegen();
+  llvm::Value *R = RHS->codegen();
   if (!L || !R)
     return nullptr;
 
@@ -52,16 +48,16 @@ Value *BinaryExprAST::codegen() {
   case '<':
     L = Builder.CreateFCmpULT(L, R, "cmptmp");
     // Convert bool 0/1 to double 0.0 or 1.0
-    return Builder.CreateUIToFP(L, Type::getDoubleTy(TheContext),
+    return Builder.CreateUIToFP(L, llvm::Type::getDoubleTy(TheContext),
                                 "booltmp");
   default:
     return LogErrorV("invalid binary operator");
   }
 }
 
-Value *CallExprAST::codegen() {
+llvm::Value *CallExprAST::codegen() {
   // Look up the name in the global module table.
-  Function *CalleeF = TheModule->getFunction(Callee);
+  llvm::Function *CalleeF = TheModule->getFunction(Callee);
   if (!CalleeF)
     return LogErrorV("Unknown function referenced");
 
@@ -69,7 +65,7 @@ Value *CallExprAST::codegen() {
   if (CalleeF->arg_size() != Args.size())
     return LogErrorV("Incorrect # arguments passed");
 
-  std::vector<Value *> ArgsV;
+  std::vector<llvm::Value *> ArgsV;
   for (unsigned i = 0, e = Args.size(); i != e; ++i) {
     ArgsV.push_back(Args[i]->codegen());
     if (!ArgsV.back())
@@ -79,14 +75,14 @@ Value *CallExprAST::codegen() {
   return Builder.CreateCall(CalleeF, ArgsV, "calltmp");
 }
 
-Function *PrototypeAST::codegen() {
+llvm::Function *PrototypeAST::codegen() {
   // Make the function type:  double(double,double) etc.
-  std::vector<Type *> Doubles(Args.size(), Type::getDoubleTy(TheContext));
-  FunctionType *FT =
-      FunctionType::get(Type::getDoubleTy(TheContext), Doubles, false);
+  std::vector<llvm::Type *> Doubles(Args.size(), llvm::Type::getDoubleTy(TheContext));
+  llvm::FunctionType *FT =
+      llvm::FunctionType::get(llvm::Type::getDoubleTy(TheContext), Doubles, false);
 
-  Function *F =
-      Function::Create(FT, Function::ExternalLinkage, Name, TheModule.get());
+  llvm::Function *F =
+      llvm::Function::Create(FT, llvm::Function::ExternalLinkage, Name, TheModule.get());
 
   // Set names for all arguments.
   unsigned Idx = 0;
@@ -96,9 +92,9 @@ Function *PrototypeAST::codegen() {
   return F;
 }
 
-Function *FunctionAST::codegen() {
+llvm::Function *FunctionAST::codegen() {
   // First, check for an existing function from a previous 'extern' declaration.
-  Function *TheFunction = TheModule->getFunction(Proto->getName());
+  llvm::Function *TheFunction = TheModule->getFunction(Proto->getName());
 
   if (!TheFunction)
     TheFunction = Proto->codegen();
@@ -107,7 +103,7 @@ Function *FunctionAST::codegen() {
     return nullptr;
 
   // Create a new basic block to start insertion into.
-  BasicBlock *BB = BasicBlock::Create(TheContext, "entry", TheFunction);
+  llvm::BasicBlock *BB = llvm::BasicBlock::Create(TheContext, "entry", TheFunction);
   Builder.SetInsertPoint(BB);
 
   // Record the function arguments in the NamedValues map.
@@ -115,12 +111,12 @@ Function *FunctionAST::codegen() {
   for (auto &Arg : TheFunction->args())
     NamedValues[std::string(Arg.getName())] = &Arg;
 
-  if (Value *RetVal = Body->codegen()) {
+  if (llvm::Value *RetVal = Body->codegen()) {
     // Finish off the function.
     Builder.CreateRet(RetVal);
 
     // Validate the generated code, checking for consistency.
-    verifyFunction(*TheFunction);
+    llvm::verifyFunction(*TheFunction);
 
     return TheFunction;
   }
