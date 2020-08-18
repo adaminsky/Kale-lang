@@ -16,9 +16,11 @@ make
 
 ## Running
 
-Execute `./Kale` and then type in your program. Currently, every token must be
-separated by a space, so the following is valid:
+Execute `./Kale` and then type in your program. An example interactive session
+is shown below:
 
 ```sh
-ready> extern cos ( x ) ;
+ready> extern cos(x);
+...
+ready> cos(1.2345);
 ```
