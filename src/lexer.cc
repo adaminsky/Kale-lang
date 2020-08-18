@@ -5,16 +5,14 @@
 
 /// gettok - Return the next token from standard input.
 int Lexer::gettok() {
-  int LastChar = ' ';
-
   // Skip any whitespace.
-  while (isspace(LastChar))
-    LastChar = getchar();
+  while (isspace(_lastChar))
+    _lastChar = getchar();
 
-  if (isalpha(LastChar)) { // identifier: [a-zA-Z][a-zA-Z0-9]*
-    IdentifierStr = LastChar;
-    while (isalnum((LastChar = getchar())))
-      IdentifierStr += LastChar;
+  if (isalpha(_lastChar)) { // identifier: [a-zA-Z][a-zA-Z0-9]*
+    IdentifierStr = _lastChar;
+    while (isalnum((_lastChar = getchar())))
+      IdentifierStr += _lastChar;
 
     if (IdentifierStr == "def")
       return tok_def;
@@ -23,33 +21,33 @@ int Lexer::gettok() {
     return tok_identifier;
   }
 
-  if (isdigit(LastChar) || LastChar == '.') { // Number: [0-9.]+
+  if (isdigit(_lastChar) || _lastChar == '.') { // Number: [0-9.]+
     std::string NumStr;
     do {
-      NumStr += LastChar;
-      LastChar = getchar();
-    } while (isdigit(LastChar) || LastChar == '.');
+      NumStr += _lastChar;
+      _lastChar = getchar();
+    } while (isdigit(_lastChar) || _lastChar == '.');
 
     NumVal = strtod(NumStr.c_str(), nullptr);
     return tok_number;
   }
 
-  if (LastChar == '#') {
+  if (_lastChar == '#') {
     // Comment until end of line.
     do
-      LastChar = getchar();
-    while (LastChar != EOF && LastChar != '\n' && LastChar != '\r');
+      _lastChar = getchar();
+    while (_lastChar != EOF && _lastChar != '\n' && _lastChar != '\r');
 
-    if (LastChar != EOF)
+    if (_lastChar != EOF)
       return gettok();
   }
 
   // Check for end of file.  Don't eat the EOF.
-  if (LastChar == EOF)
+  if (_lastChar == EOF)
     return tok_eof;
 
   // Otherwise, just return the character as its ascii value.
-  int ThisChar = LastChar;
-  LastChar = getchar();
+  int ThisChar = _lastChar;
+  _lastChar = getchar();
   return ThisChar;
 }
