@@ -5,6 +5,7 @@
 llvm::LLVMContext TheContext;
 llvm::IRBuilder<> Builder(TheContext);
 std::unique_ptr<llvm::Module> TheModule;
+std::unique_ptr<llvm::legacy::FunctionPassManager> TheFPM;
 std::map<std::string, llvm::Value *> NamedValues;
 
 /// LogError* - These are little helper functions for error handling.
@@ -117,6 +118,9 @@ llvm::Function *FunctionAST::codegen() {
 
     // Validate the generated code, checking for consistency.
     llvm::verifyFunction(*TheFunction);
+
+    // Optimize the function.
+    TheFPM->run(*TheFunction);
 
     return TheFunction;
   }

@@ -9,6 +9,10 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/IR/LegacyPassManager.h"
+#include "llvm/Transforms/InstCombine/InstCombine.h"
+#include "llvm/Transforms/Scalar.h"
+#include "llvm/Transforms/Scalar/GVN.h"
 #include "parser.h"
 #include "lexer.h"
 #include "ast.h"
@@ -90,6 +94,29 @@ static void MainLoop(Parser& parser) {
 }
 
 //===----------------------------------------------------------------------===//
+// Setup code for pass manager.
+//===----------------------------------------------------------------------===//
+
+void InitializeModuleAndPassManager(void) {
+  // Open a new module.
+  TheModule = std::make_unique<llvm::Module>("my cool jit", TheContext);
+
+  // Create a new pass manager attached to it.
+  TheFPM = std::make_unique<llvm::legacy::FunctionPassManager>(TheModule.get());
+
+  // Do simple "peephole" optimizations and bit-twiddling optzns.
+  TheFPM->add(llvm::createInstructionCombiningPass());
+  // Reassociate expressions.
+  TheFPM->add(llvm::createReassociatePass());
+  // Eliminate Common SubExpressions.
+  TheFPM->add(llvm::createGVNPass());
+  // Simplify the control flow graph (deleting unreachable blocks, etc).
+  TheFPM->add(llvm::createCFGSimplificationPass());
+
+  TheFPM->doInitialization();
+}
+
+//===----------------------------------------------------------------------===//
 // Main driver code.
 //===----------------------------------------------------------------------===//
 
@@ -106,7 +133,7 @@ int main() {
   fprintf(stderr, "ready> ");
   parser.getNextToken();
 
-  TheModule = std::make_unique<llvm::Module>("my cool jit", TheContext);
+  InitializeModuleAndPassManager();
 
   // Run the main "interpreter loop" now.
   MainLoop(parser);

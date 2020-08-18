@@ -7,10 +7,12 @@
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/LegacyPassManager.h"
 
 extern llvm::LLVMContext TheContext;
 extern llvm::IRBuilder<> Builder;
 extern std::unique_ptr<llvm::Module> TheModule;
+extern std::unique_ptr<llvm::legacy::FunctionPassManager> TheFPM;
 extern std::map<std::string, llvm::Value *> NamedValues;
 
 /// ExprAST - Base class for all expression nodes.
