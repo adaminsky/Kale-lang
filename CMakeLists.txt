@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -rdynamic")
 
 project(Kaleidoscope)
 
@@ -16,6 +17,7 @@ set(CMAKE_BUILD_TYPE Debug)
 
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
+include_directories(include)
 
 # Now build our tools
 add_library(lexer_lib src/lexer.cc)
@@ -27,7 +29,7 @@ target_link_libraries(Kale parser_lib)
 
 # Find the libraries that correspond to the LLVM components
 # that we wish to use
-llvm_map_components_to_libnames(llvm_libs support core irreader mcjit native)
+llvm_map_components_to_libnames(llvm_libs support core irreader mcjit native orcjit)
 
 # Link against LLVM libraries
 target_link_libraries(Kale ${llvm_libs})

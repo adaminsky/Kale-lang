@@ -1,3 +1,4 @@
+#include "../include/KaleidoscopeJIT.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/BasicBlock.h"
@@ -25,6 +26,31 @@
 #include <memory>
 #include <string>
 #include <vector>
+
+
+//===----------------------------------------------------------------------===//
+// Setup code for pass manager and JIT.
+//===----------------------------------------------------------------------===//
+
+void InitializeModuleAndPassManager(std::unique_ptr<llvm::orc::KaleidoscopeJIT>& TheJIT) {
+  // Open a new module.
+  TheModule = std::make_unique<llvm::Module>("my cool jit", TheContext);
+  TheModule->setDataLayout(TheJIT->getTargetMachine().createDataLayout());
+
+  // Create a new pass manager attached to it.
+  TheFPM = std::make_unique<llvm::legacy::FunctionPassManager>(TheModule.get());
+
+  // Do simple "peephole" optimizations and bit-twiddling optzns.
+  TheFPM->add(llvm::createInstructionCombiningPass());
+  // Reassociate expressions.
+  TheFPM->add(llvm::createReassociatePass());
+  // Eliminate Common SubExpressions.
+  TheFPM->add(llvm::createGVNPass());
+  // Simplify the control flow graph (deleting unreachable blocks, etc).
+  TheFPM->add(llvm::createCFGSimplificationPass());
+
+  TheFPM->doInitialization();
+}
 
 //===----------------------------------------------------------------------===//
 // Top-Level parsing
@@ -56,13 +82,26 @@ static void HandleExtern(Parser& parser) {
   }
 }
 
-static void HandleTopLevelExpression(Parser& parser) {
+static void HandleTopLevelExpression(Parser& parser, std::unique_ptr<llvm::orc::KaleidoscopeJIT>& TheJIT) {
   // Evaluate a top-level expression into an anonymous function.
   if (auto FnAST = parser.ParseTopLevelExpr()) {
     if (auto *FnIR = FnAST->codegen()) {
-      fprintf(stderr, "Parsed a top-level expr\n");
-      FnIR->print(llvm::errs());
-      fprintf(stderr, "\n");
+      // JIT the module containing the anonymous expression, keeping a handle so
+      // we can free it later.
+      auto H = TheJIT->addModule(std::move(TheModule));
+      InitializeModuleAndPassManager(TheJIT);
+
+      // Search the JIT for the __anon_expr symbol.
+      auto ExprSymbol = TheJIT->findSymbol("__anon_expr");
+      assert(ExprSymbol && "Function not found");
+
+      // Get the symbol's address and cast it to the right type (takes no
+      // arguments, returns a double) so we can call it as a native function.
+      double (*FP)() = (double (*)())(intptr_t)cantFail(ExprSymbol.getAddress());
+      fprintf(stderr, "Evaluated to %f\n", FP());
+
+      // Delete the anonymous expression module from the JIT.
+      TheJIT->removeModule(H);
     }
   } else {
     // Skip token for error recovery.
@@ -71,7 +110,7 @@ static void HandleTopLevelExpression(Parser& parser) {
 }
 
 /// top ::= definition | external | expression | ';'
-static void MainLoop(Parser& parser) {
+static void MainLoop(std::unique_ptr<llvm::orc::KaleidoscopeJIT> TheJIT, Parser& parser) {
   while (true) {
     fprintf(stderr, "ready> ");
     switch (parser._curTok) {
@@ -87,33 +126,10 @@ static void MainLoop(Parser& parser) {
       HandleExtern(parser);
       break;
     default:
-      HandleTopLevelExpression(parser);
+      HandleTopLevelExpression(parser, TheJIT);
       break;
     }
   }
-}
-
-//===----------------------------------------------------------------------===//
-// Setup code for pass manager.
-//===----------------------------------------------------------------------===//
-
-void InitializeModuleAndPassManager(void) {
-  // Open a new module.
-  TheModule = std::make_unique<llvm::Module>("my cool jit", TheContext);
-
-  // Create a new pass manager attached to it.
-  TheFPM = std::make_unique<llvm::legacy::FunctionPassManager>(TheModule.get());
-
-  // Do simple "peephole" optimizations and bit-twiddling optzns.
-  TheFPM->add(llvm::createInstructionCombiningPass());
-  // Reassociate expressions.
-  TheFPM->add(llvm::createReassociatePass());
-  // Eliminate Common SubExpressions.
-  TheFPM->add(llvm::createGVNPass());
-  // Simplify the control flow graph (deleting unreachable blocks, etc).
-  TheFPM->add(llvm::createCFGSimplificationPass());
-
-  TheFPM->doInitialization();
 }
 
 //===----------------------------------------------------------------------===//
@@ -121,6 +137,12 @@ void InitializeModuleAndPassManager(void) {
 //===----------------------------------------------------------------------===//
 
 int main() {
+  std::unique_ptr<llvm::orc::KaleidoscopeJIT> TheJIT = std::make_unique<llvm::orc::KaleidoscopeJIT>();
+
+  LLVMInitializeNativeTarget();
+  LLVMInitializeNativeAsmPrinter();
+  LLVMInitializeNativeAsmParser();
+
   Parser parser;
   // Install standard binary operators.
   // 1 is lowest precedence.
@@ -133,10 +155,10 @@ int main() {
   fprintf(stderr, "ready> ");
   parser.getNextToken();
 
-  InitializeModuleAndPassManager();
+  InitializeModuleAndPassManager(TheJIT);
 
   // Run the main "interpreter loop" now.
-  MainLoop(parser);
+  MainLoop(std::move(TheJIT), parser);
 
   TheModule->print(llvm::errs(), nullptr);
 
