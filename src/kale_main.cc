@@ -137,11 +137,13 @@ static void MainLoop(std::unique_ptr<llvm::orc::KaleidoscopeJIT> TheJIT, Parser&
 //===----------------------------------------------------------------------===//
 
 int main() {
-  std::unique_ptr<llvm::orc::KaleidoscopeJIT> TheJIT = std::make_unique<llvm::orc::KaleidoscopeJIT>();
+  std::unique_ptr<llvm::orc::KaleidoscopeJIT> TheJIT;
 
   LLVMInitializeNativeTarget();
   LLVMInitializeNativeAsmPrinter();
   LLVMInitializeNativeAsmParser();
+
+  TheJIT = std::make_unique<llvm::orc::KaleidoscopeJIT>();
 
   Parser parser;
   // Install standard binary operators.

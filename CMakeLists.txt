@@ -18,6 +18,7 @@ set(CMAKE_BUILD_TYPE Debug)
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 include_directories(include)
+add_compile_options(-fno-rtti)
 
 # Now build our tools
 add_library(lexer_lib src/lexer.cc)
