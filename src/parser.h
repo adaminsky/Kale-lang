@@ -60,6 +60,9 @@ class Parser {
 
         /// external ::= 'extern' prototype
         std::unique_ptr<PrototypeAST> ParseExtern();
+
+        /// ifexpr ::= 'if' expression 'then' expression 'else' expression
+        std::unique_ptr<ExprAST> ParseIfExpr();
 };
 
 #endif	// PARSER_H
