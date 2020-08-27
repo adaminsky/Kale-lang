@@ -63,6 +63,9 @@ class Parser {
 
         /// ifexpr ::= 'if' expression 'then' expression 'else' expression
         std::unique_ptr<ExprAST> ParseIfExpr();
+
+        /// forexpr ::= 'for' identifier '=' expr ',' expr (',' expr)? 'in' expression
+        std::unique_ptr<ExprAST> ParseForExpr();
 };
 
 #endif	// PARSER_H
