@@ -66,6 +66,11 @@ class Parser {
 
         /// forexpr ::= 'for' identifier '=' expr ',' expr (',' expr)? 'in' expression
         std::unique_ptr<ExprAST> ParseForExpr();
+
+        /// unary
+        ///   ::= primary
+        ///   ::= '!' unary
+        std::unique_ptr<ExprAST> ParseUnary();
 };
 
 #endif	// PARSER_H

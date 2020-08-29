@@ -116,8 +116,8 @@ std::unique_ptr<ExprAST> Parser::ParseBinOpRHS(int ExprPrec,
         int BinOp = _curTok;
         getNextToken(); // eat binop
 
-        // Parse the primary expression after the binary operator.
-        auto RHS = ParsePrimary();
+        // Parse the unary expression after the binary operator.
+        auto RHS = ParseUnary();
         if (!RHS)
             return nullptr;
 
@@ -140,7 +140,7 @@ std::unique_ptr<ExprAST> Parser::ParseBinOpRHS(int ExprPrec,
 ///   ::= primary binoprhs
 ///
 std::unique_ptr<ExprAST> Parser::ParseExpression() {
-    auto LHS = ParsePrimary();
+    auto LHS = ParseUnary();
     if (!LHS)
         return nullptr;
 
@@ -150,6 +150,7 @@ std::unique_ptr<ExprAST> Parser::ParseExpression() {
 /// prototype
 ///   ::= id '(' id* ')'
 ///   ::= binary LETTER number? (id, id)
+///   ::= unary LETTER (id)
 std::unique_ptr<PrototypeAST> Parser::ParsePrototype() {
     std::string FnName;
 
@@ -162,6 +163,15 @@ std::unique_ptr<PrototypeAST> Parser::ParsePrototype() {
         case tok_identifier:
             FnName = lex.IdentifierStr;
             Kind = 0;
+            getNextToken();
+            break;
+        case tok_unary:
+            getNextToken();
+            if (!isascii(_curTok))
+                return LogErrorP("Expected unary operator");
+            FnName = "unary";
+            FnName += (char) _curTok;
+            Kind = 1;
             getNextToken();
             break;
         case tok_binary:
@@ -306,4 +316,17 @@ std::unique_ptr<ExprAST> Parser::ParseForExpr() {
   return std::make_unique<ForExprAST>(IdName, std::move(Start),
                                        std::move(End), std::move(Step),
                                        std::move(Body));
+}
+
+std::unique_ptr<ExprAST> Parser::ParseUnary() {
+    // If the current token is not an operator, it must be a primary expr
+    if (!isascii(_curTok) || _curTok == '(' || _curTok == ',')
+        return ParsePrimary();
+
+    // If this is a unary operator, read it
+    int Opc = _curTok;
+    getNextToken();
+    if (auto Operand = ParseUnary())
+        return std::make_unique<UnaryExprAST>(Opc, std::move(Operand));
+    return nullptr;
 }

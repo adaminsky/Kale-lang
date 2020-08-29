@@ -81,7 +81,7 @@ llvm::Value *BinaryExprAST::codegen() {
 
 llvm::Value *CallExprAST::codegen() {
   // Look up the name in the global module table.
-  llvm::Function *CalleeF = TheModule->getFunction(Callee);
+  llvm::Function *CalleeF = getFunction(Callee);
   if (!CalleeF)
     return LogErrorV("Unknown function referenced");
 
@@ -170,6 +170,9 @@ llvm::Function *FunctionAST::codegen() {
 
   // Error reading body, remove function.
   TheFunction->eraseFromParent();
+
+  if (P.isBinaryOp())
+      BinopPrecedence.erase(P.getOperatorName());
   return nullptr;
 }
 
@@ -260,7 +263,7 @@ llvm::Value *ForExprAST::codegen() {
     // allow an error.
     if (!Body->codegen())
         return nullptr;
-    
+
     // Emit the setp value
     llvm::Value *StepVal = nullptr;
     if (Step) {
@@ -278,7 +281,7 @@ llvm::Value *ForExprAST::codegen() {
     llvm::Value *EndCond = End->codegen();
     if (!EndCond)
         return nullptr;
-    
+
     // Convert condition to a bool by comparing non-equal to 0.0
     EndCond = Builder.CreateFCmpONE(
         EndCond, llvm::ConstantFP::get(TheContext, llvm::APFloat(0.0)), "loopcond");
@@ -293,7 +296,7 @@ llvm::Value *ForExprAST::codegen() {
 
     // Any new code will be inserted in AfterBB.
     Builder.SetInsertPoint(AfterBB);
-    
+
     // Add a new entry to the PHI node for the backedge
     Variable->addIncoming(NextVar, LoopEndBB);
 
@@ -305,4 +308,16 @@ llvm::Value *ForExprAST::codegen() {
 
     // for expr always returns 0.0
     return llvm::Constant::getNullValue(llvm::Type::getDoubleTy(TheContext));
+}
+
+llvm::Value *UnaryExprAST::codegen() {
+    llvm::Value *OperandV = Operand->codegen();
+    if (!OperandV)
+        return nullptr;
+
+    llvm::Function *F = getFunction(std::string("unary") + Opcode);
+    if (!F)
+        return LogErrorV("Unknown unary operator");
+
+    return Builder.CreateCall(F, OperandV, "unop");
 }

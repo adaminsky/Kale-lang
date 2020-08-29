@@ -56,12 +56,14 @@ void InitializeModuleAndPassManager(std::unique_ptr<llvm::orc::KaleidoscopeJIT>&
 // Top-Level parsing
 //===----------------------------------------------------------------------===//
 
-static void HandleDefinition(Parser& parser) {
+static void HandleDefinition(Parser& parser, std::unique_ptr<llvm::orc::KaleidoscopeJIT>& TheJIT) {
   if (auto FnAST = parser.ParseDefinition()) {
     if (auto *FnIR = FnAST->codegen()) {
       fprintf(stderr, "Parsed a function definition.\n");
       FnIR->print(llvm::errs());
       fprintf(stderr, "\n");
+      TheJIT->addModule(std::move(TheModule));
+      InitializeModuleAndPassManager(TheJIT);
     }
   } else {
     // Skip token for error recovery.
@@ -75,6 +77,7 @@ static void HandleExtern(Parser& parser) {
       fprintf(stderr, "Parsed an extern\n");
       FnIR->print(llvm::errs());
       fprintf(stderr, "\n");
+      FunctionProtos[ProtoAST->getName()] = std::move(ProtoAST);
     }
   } else {
     // Skip token for error recovery.
@@ -120,7 +123,7 @@ static void MainLoop(std::unique_ptr<llvm::orc::KaleidoscopeJIT> TheJIT, Parser&
       parser.getNextToken();
       break;
     case tok_def:
-      HandleDefinition(parser);
+      HandleDefinition(parser, TheJIT);
       break;
     case tok_extern:
       HandleExtern(parser);

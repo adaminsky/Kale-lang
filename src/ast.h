@@ -127,7 +127,20 @@ public:
     llvm::Value *codegen() override;
 };
 
+// UnaryExprAST - Expression class for a unary operator
+class UnaryExprAST : public ExprAST {
+    char Opcode;
+    std::unique_ptr<ExprAST> Operand;
+
+public:
+    UnaryExprAST(char Opcode, std::unique_ptr<ExprAST> Operand)
+        : Opcode(Opcode), Operand(std::move(Operand)) {}
+
+    llvm::Value *codegen() override;
+};
+
 extern std::unique_ptr<ExprAST> LogError(const char *Str);
 extern std::unique_ptr<PrototypeAST> LogErrorP(const char *Str);
 extern llvm::Value *LogErrorV(const char *Str);
+extern std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionProtos;
 #endif	// AST_H
