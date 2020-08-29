@@ -16,6 +16,9 @@ jobs:
   build:
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
+    env:
+      CC: clang-9
+      CXX: clang++-9
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
