@@ -15,7 +15,7 @@ int Parser::GetTokPrecedence() {
         return -1;
 
     // Make sure it's a declared binop.
-    int TokPrec = _binopPrecedence[_curTok];
+    int TokPrec = BinopPrecedence[_curTok];
     if (TokPrec <= 0)
         return -1;
     return TokPrec;
@@ -149,12 +149,39 @@ std::unique_ptr<ExprAST> Parser::ParseExpression() {
 
 /// prototype
 ///   ::= id '(' id* ')'
+///   ::= binary LETTER number? (id, id)
 std::unique_ptr<PrototypeAST> Parser::ParsePrototype() {
-    if (_curTok != tok_identifier)
-        return LogErrorP("Expected function name in prototype");
+    std::string FnName;
 
-    std::string FnName = lex.IdentifierStr;
-    getNextToken();
+    unsigned Kind = 0;  // 0 = identifier, 1 = unary, 2 = binary
+    unsigned BinaryPrecedence = 30;
+
+    switch (_curTok) {
+        default:
+            return LogErrorP("Expected function name in prototype");
+        case tok_identifier:
+            FnName = lex.IdentifierStr;
+            Kind = 0;
+            getNextToken();
+            break;
+        case tok_binary:
+            getNextToken();
+            if (!isascii(_curTok))
+                return LogErrorP("Expected binary operator");
+            FnName = "binary";
+            FnName += (char)_curTok;
+            Kind = 2;
+            getNextToken();
+
+            // Read the precedence if present
+            if (_curTok == tok_number) {
+                if (lex.NumVal < 1 || lex.NumVal > 100)
+                    return LogErrorP("Invalid precedence: must be 1..100");
+                BinaryPrecedence = (unsigned) lex.NumVal;
+                getNextToken();
+            }
+            break;
+    }
 
     if (_curTok != '(')
         return LogErrorP("Expected '(' in prototype");
@@ -168,7 +195,12 @@ std::unique_ptr<PrototypeAST> Parser::ParsePrototype() {
     // success.
     getNextToken(); // eat ')'.
 
-    return std::make_unique<PrototypeAST>(FnName, std::move(ArgNames));
+    // Verify right number of names for operator
+    if (Kind && ArgNames.size() != Kind)
+        return LogErrorP("Invalid number of operands for operator");
+
+    return std::make_unique<PrototypeAST>(FnName, std::move(ArgNames), 
+            Kind != 0, BinaryPrecedence);
 }
 
 /// definition ::= 'def' prototype expression

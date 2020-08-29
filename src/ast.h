@@ -14,6 +14,7 @@ extern llvm::IRBuilder<> Builder;
 extern std::unique_ptr<llvm::Module> TheModule;
 extern std::unique_ptr<llvm::legacy::FunctionPassManager> TheFPM;
 extern std::map<std::string, llvm::Value *> NamedValues;
+extern std::map<char, int> BinopPrecedence;
 
 /// ExprAST - Base class for all expression nodes.
 class ExprAST {
@@ -70,13 +71,22 @@ public:
 class PrototypeAST {
   std::string Name;
   std::vector<std::string> Args;
+  bool IsOperator;
+  unsigned Precedence;  // Precedence if a binary op
 
 public:
-  PrototypeAST(const std::string &Name, std::vector<std::string> Args)
-      : Name(Name), Args(std::move(Args)) {}
+  PrototypeAST(const std::string &Name, std::vector<std::string> Args,
+               bool IsOperator = false, unsigned Prec = 0)
+      : Name(Name), Args(std::move(Args)), IsOperator(IsOperator),
+        Precedence(Prec) {}
 
   const std::string &getName() const { return Name; }
   llvm::Function *codegen();
+
+  bool isUnaryOp() const;
+  bool isBinaryOp() const;
+  char getOperatorName() const;
+  unsigned getBinaryPrecedence() const;
 };
 
 /// FunctionAST - This class represents a function definition itself.

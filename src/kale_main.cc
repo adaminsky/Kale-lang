@@ -170,10 +170,10 @@ int main() {
   Parser parser;
   // Install standard binary operators.
   // 1 is lowest precedence.
-  parser._binopPrecedence['<'] = 10;
-  parser._binopPrecedence['+'] = 20;
-  parser._binopPrecedence['-'] = 20;
-  parser._binopPrecedence['*'] = 40; // highest.
+  BinopPrecedence['<'] = 10;
+  BinopPrecedence['+'] = 20;
+  BinopPrecedence['-'] = 20;
+  BinopPrecedence['*'] = 40; // highest.
 
   // Prime the first token.
   fprintf(stderr, "ready> ");

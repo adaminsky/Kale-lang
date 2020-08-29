@@ -7,6 +7,8 @@ llvm::IRBuilder<> Builder(TheContext);
 std::unique_ptr<llvm::Module> TheModule;
 std::unique_ptr<llvm::legacy::FunctionPassManager> TheFPM;
 std::map<std::string, llvm::Value *> NamedValues;
+std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionProtos;
+std::map<char, int> BinopPrecedence;
 
 /// LogError* - These are little helper functions for error handling.
 std::unique_ptr<ExprAST> LogError(const char *Str) {
@@ -19,6 +21,21 @@ std::unique_ptr<PrototypeAST> LogErrorP(const char *Str) {
 }
 llvm::Value *LogErrorV(const char *Str) {
   LogError(Str);
+  return nullptr;
+}
+
+llvm::Function *getFunction(std::string Name) {
+  // First, see if the function has already been added to the current module.
+  if (auto *F = TheModule->getFunction(Name))
+    return F;
+
+  // If not, check whether we can codegen the declaration from some existing
+  // prototype.
+  auto FI = FunctionProtos.find(Name);
+  if (FI != FunctionProtos.end())
+    return FI->second->codegen();
+
+  // If no existing prototype exists, return null.
   return nullptr;
 }
 
@@ -52,8 +69,14 @@ llvm::Value *BinaryExprAST::codegen() {
     return Builder.CreateUIToFP(L, llvm::Type::getDoubleTy(TheContext),
                                 "booltmp");
   default:
-    return LogErrorV("invalid binary operator");
+    break;
   }
+
+  llvm::Function *F = getFunction(std::string("binary") + Op);
+  assert(F && "binary operator not found!");
+
+  llvm::Value *Ops[2] = {L, R};
+  return Builder.CreateCall(F, Ops, "binop");
 }
 
 llvm::Value *CallExprAST::codegen() {
@@ -93,15 +116,35 @@ llvm::Function *PrototypeAST::codegen() {
   return F;
 }
 
+bool PrototypeAST::isUnaryOp() const {
+    return IsOperator && Args.size() == 1;
+}
+
+bool PrototypeAST::isBinaryOp() const {
+    return IsOperator && Args.size() == 2;
+}
+
+char PrototypeAST::getOperatorName() const {
+    assert(isUnaryOp() || isBinaryOp());
+    return Name[Name.size() - 1];
+}
+
+unsigned PrototypeAST::getBinaryPrecedence() const {
+    return Precedence;
+}
+
 llvm::Function *FunctionAST::codegen() {
-  // First, check for an existing function from a previous 'extern' declaration.
-  llvm::Function *TheFunction = TheModule->getFunction(Proto->getName());
-
+  // Transfer ownership of the prototype to the FunctionProtos map, but keep a
+  // reference to it for use below.
+  auto & P = *Proto;
+  FunctionProtos[Proto->getName()] = std::move(Proto);
+  llvm::Function *TheFunction = getFunction(P.getName());
   if (!TheFunction)
-    TheFunction = Proto->codegen();
+      return nullptr;
 
-  if (!TheFunction)
-    return nullptr;
+  // If this is an operator, install it
+  if (P.isBinaryOp())
+      BinopPrecedence[P.getOperatorName()] = P.getBinaryPrecedence();
 
   // Create a new basic block to start insertion into.
   llvm::BasicBlock *BB = llvm::BasicBlock::Create(TheContext, "entry", TheFunction);
