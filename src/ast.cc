@@ -352,3 +352,40 @@ llvm::Value *UnaryExprAST::codegen() {
 
     return Builder.CreateCall(F, OperandV, "unop");
 }
+
+llvm::Value *VarExprAST::codegen() {
+    std::vector<llvm::AllocaInst *> OldBindings;
+    llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
+
+    // Register all variables and emit their initializer
+    for (unsigned i = 0, e = VarNames.size(); i != e; ++i) {
+        const std::string &VarName = VarNames[i].first;
+        ExprAST *Init = VarNames[i].second.get();
+
+        // Emit the initializer before adding the variable to scope
+        llvm::Value *InitVal;
+        if (Init) {
+            InitVal = Init->codegen();
+            if (!InitVal)
+              return nullptr;
+        } else { // If not specified use 0.0
+            InitVal = llvm::ConstantFP::get(TheContext, llvm::APFloat(0.0));
+        }
+
+        llvm::AllocaInst *Alloca = CreateEntryBlockAlloca(TheFunction, VarName);
+        Builder.CreateStore(InitVal, Alloca);
+
+        // Remember the old variable binding to restore after the body
+        OldBindings.push_back(NamedValues[VarName]);
+        NamedValues[VarName] = Alloca;
+    }
+
+    // Codegen the body
+    llvm::Value *BodyVal = Body->codegen();
+    if (!BodyVal)
+        return nullptr;
+
+    for (unsigned i = 0, e = VarNames.size(); i != e; ++i)
+        NamedValues[VarNames[i].first] = OldBindings[i];
+    return BodyVal;
+}

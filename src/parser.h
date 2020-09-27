@@ -71,6 +71,10 @@ class Parser {
         ///   ::= primary
         ///   ::= '!' unary
         std::unique_ptr<ExprAST> ParseUnary();
+
+        /// varexpr ::= 'var' identifier ('=' expression)?
+        ///                   (',' identifier ('=' expression)?)* 'in' expression
+        std::unique_ptr<ExprAST> ParseVarExpr();
 };
 
 #endif	// PARSER_H

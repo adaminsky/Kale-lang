@@ -82,6 +82,8 @@ std::unique_ptr<ExprAST> Parser::ParseIdentifierExpr() {
 ///   ::= numberexpr
 ///   ::= parenexpr
 ///   ::= ifexpr
+///   ::= forexpr
+///   ::= varexpr
 std::unique_ptr<ExprAST> Parser::ParsePrimary() {
     switch (_curTok) {
         default:
@@ -96,6 +98,8 @@ std::unique_ptr<ExprAST> Parser::ParsePrimary() {
             return ParseIfExpr();
         case tok_for:
             return ParseForExpr();
+        case tok_var:
+            return ParseVarExpr();
     }
 }
 
@@ -329,4 +333,41 @@ std::unique_ptr<ExprAST> Parser::ParseUnary() {
     if (auto Operand = ParseUnary())
         return std::make_unique<UnaryExprAST>(Opc, std::move(Operand));
     return nullptr;
+}
+
+std::unique_ptr<ExprAST> Parser::ParseVarExpr() {
+    getNextToken();  // eat the 'var'
+    std::vector<std::pair<std::string, std::unique_ptr<ExprAST>>> VarNames;
+
+    // At least one variable name is required
+    if (_curTok != tok_identifier)
+        return LogError("expected identifier after var");
+
+    while(1) {
+        std::string Name = lex.IdentifierStr;
+        getNextToken();  // eat identifier
+        std::unique_ptr<ExprAST> Init;
+        if (_curTok == '=') {
+          getNextToken();  // eat the '='
+          Init = ParseExpression();
+          if (!Init) return nullptr;
+        }
+
+        VarNames.push_back(std::make_pair(Name, std::move(Init)));
+        if (_curTok != ',') break;
+        getNextToken();  // eat the ','
+
+        if (_curTok != tok_identifier)
+            return LogError("expected identifier list after var");
+    }
+
+    if (_curTok != tok_in)
+        return LogError("expected 'in' keyword after 'var'");
+    getNextToken();  // eat 'in'
+
+    auto Body = ParseExpression();
+    if (!Body)
+        return nullptr;
+
+    return std::make_unique<VarExprAST>(std::move(VarNames), std::move(Body));
 }
