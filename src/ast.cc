@@ -62,6 +62,24 @@ llvm::Value *VariableExprAST::codegen() {
 }
 
 llvm::Value *BinaryExprAST::codegen() {
+  // Special case '=' because we don't want to emit the LHS as an expression
+  if (Op == '=') {
+    VariableExprAST *LHSE = static_cast<VariableExprAST*>(LHS.get());
+    if (!LHSE)
+      return LogErrorV("destination of '=' must be a variable");
+
+    // Codegen the RHS
+    llvm::Value *Val = RHS->codegen();
+    if (!Val)
+      return nullptr;
+
+    llvm::Value *Variable = NamedValues[std::string(LHSE->getName())];
+    if (!Variable)
+      return LogErrorV("Unknown variable name");
+    Builder.CreateStore(Val, Variable);
+    return Val;
+  }
+
   llvm::Value *L = LHS->codegen();
   llvm::Value *R = RHS->codegen();
   if (!L || !R)
