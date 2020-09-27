@@ -13,7 +13,7 @@ extern llvm::LLVMContext TheContext;
 extern llvm::IRBuilder<> Builder;
 extern std::unique_ptr<llvm::Module> TheModule;
 extern std::unique_ptr<llvm::legacy::FunctionPassManager> TheFPM;
-extern std::map<std::string, llvm::Value *> NamedValues;
+extern std::map<std::string, llvm::AllocaInst *> NamedValues;
 extern std::map<char, int> BinopPrecedence;
 
 /// ExprAST - Base class for all expression nodes.
