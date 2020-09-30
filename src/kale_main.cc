@@ -16,6 +16,13 @@
 #include "llvm/Transforms/Utils.h"
 #include "llvm/Transforms/Scalar/GVN.h"
 #include "llvm/Transforms/Utils/Mem2Reg.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Host.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/TargetRegistry.h"
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetOptions.h"
 #include "parser.h"
 #include "lexer.h"
 #include "ast.h"
@@ -28,6 +35,8 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <system_error>
+#include <utility>
 
 
 //===----------------------------------------------------------------------===//
@@ -66,8 +75,6 @@ static void HandleDefinition(Parser& parser, std::unique_ptr<llvm::orc::Kaleidos
       fprintf(stderr, "Parsed a function definition.\n");
       FnIR->print(llvm::errs());
       fprintf(stderr, "\n");
-      TheJIT->addModule(std::move(TheModule));
-      InitializeModuleAndPassManager(TheJIT);
     }
   } else {
     // Skip token for error recovery.
@@ -92,24 +99,7 @@ static void HandleExtern(Parser& parser) {
 static void HandleTopLevelExpression(Parser& parser, std::unique_ptr<llvm::orc::KaleidoscopeJIT>& TheJIT) {
   // Evaluate a top-level expression into an anonymous function.
   if (auto FnAST = parser.ParseTopLevelExpr()) {
-    if (auto *FnIR = FnAST->codegen()) {
-      // JIT the module containing the anonymous expression, keeping a handle so
-      // we can free it later.
-      auto H = TheJIT->addModule(std::move(TheModule));
-      InitializeModuleAndPassManager(TheJIT);
-
-      // Search the JIT for the __anon_expr symbol.
-      auto ExprSymbol = TheJIT->findSymbol("__anon_expr");
-      assert(ExprSymbol && "Function not found");
-
-      // Get the symbol's address and cast it to the right type (takes no
-      // arguments, returns a double) so we can call it as a native function.
-      double (*FP)() = (double (*)())(intptr_t)cantFail(ExprSymbol.getAddress());
-      fprintf(stderr, "Evaluated to %f\n", FP());
-
-      // Delete the anonymous expression module from the JIT.
-      TheJIT->removeModule(H);
-    }
+    FnAST->codegen();
   } else {
     // Skip token for error recovery.
     parser.getNextToken();
@@ -192,7 +182,48 @@ int main() {
   // Run the main "interpreter loop" now.
   MainLoop(std::move(TheJIT), parser);
 
-  TheModule->print(llvm::errs(), nullptr);
+  llvm::InitializeAllTargetInfos();
+  llvm::InitializeAllTargets();
+  llvm::InitializeAllTargetMCs();
+  llvm::InitializeAllAsmParsers();
+  llvm::InitializeAllAsmPrinters();
+
+  auto TargetTriple = llvm::sys::getDefaultTargetTriple();
+  TheModule->setTargetTriple(TargetTriple);
+
+  std::string Error;
+  auto Target = llvm::TargetRegistry::lookupTarget(TargetTriple, Error);
+  if (!Target) {
+    llvm::errs() << Error;
+    return 1;
+  }
+
+  auto CPU = "generic";
+  auto Features = "";
+  llvm::TargetOptions opt;
+  auto RM = llvm::Optional<llvm::Reloc::Model>();
+  auto TheTargetMachine =
+    Target->createTargetMachine(TargetTriple, CPU, Features, opt, RM);
+  TheModule->setDataLayout(TheTargetMachine->createDataLayout());
+
+  auto Filename = "output.o";
+  std::error_code EC;
+  llvm::raw_fd_ostream dest(Filename, EC, llvm::sys::fs::OF_None);
+  if (EC) {
+    llvm::errs() << "Could not open file:" << EC.message();
+    return 1;
+  }
+
+  llvm::legacy::PassManager pass;
+  auto FileType = llvm::CGFT_ObjectFile;
+  if (TheTargetMachine->addPassesToEmitFile(pass, dest, nullptr, FileType)) {
+    llvm::errs() << "TheTargetMachine can't emit a file of this type";
+    return 1;
+  }
+
+  pass.run(*TheModule);
+  dest.flush();
+  llvm::outs() << "Wrote " << Filename << "\n";
 
   return 0;
 }
