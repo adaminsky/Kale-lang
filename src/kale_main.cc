@@ -215,7 +215,11 @@ int main() {
   }
 
   llvm::legacy::PassManager pass;
+#if LLVM_VERSION_MAJOR >= 10
   auto FileType = llvm::CGFT_ObjectFile;
+#else
+  auto FileType = llvm::LLVMTargetMachine::CGFT_ObjectFile;
+#endif
   if (TheTargetMachine->addPassesToEmitFile(pass, dest, nullptr, FileType)) {
     llvm::errs() << "TheTargetMachine can't emit a file of this type";
     return 1;
