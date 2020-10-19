@@ -26,6 +26,7 @@
 #include "parser.h"
 #include "lexer.h"
 #include "ast.h"
+#include "codegenVisitor.cc"
 
 #include <algorithm>
 #include <cctype>
@@ -71,11 +72,14 @@ void InitializeModuleAndPassManager(std::unique_ptr<llvm::orc::KaleidoscopeJIT>&
 
 static void HandleDefinition(Parser& parser, std::unique_ptr<llvm::orc::KaleidoscopeJIT>& TheJIT) {
   if (auto FnAST = parser.ParseDefinition()) {
-    if (auto *FnIR = FnAST->codegen()) {
+    codegenVisitor* codeV = new codegenVisitor();
+    FnAST->accept(codeV);
+    if (llvm::Function *FnIR = codeV->generatedCode) {
       fprintf(stderr, "Parsed a function definition.\n");
       FnIR->print(llvm::errs());
       fprintf(stderr, "\n");
     }
+    delete codeV;
   } else {
     // Skip token for error recovery.
     parser.getNextToken();
@@ -84,12 +88,15 @@ static void HandleDefinition(Parser& parser, std::unique_ptr<llvm::orc::Kaleidos
 
 static void HandleExtern(Parser& parser) {
   if (auto ProtoAST = parser.ParseExtern()) {
-    if (auto *FnIR = ProtoAST->codegen()) {
+    codegenVisitor* codeV = new codegenVisitor();
+    ProtoAST->accept(codeV);
+    if (llvm::Function *FnIR = codeV->generatedCode) {
       fprintf(stderr, "Parsed an extern\n");
       FnIR->print(llvm::errs());
       fprintf(stderr, "\n");
       FunctionProtos[ProtoAST->getName()] = std::move(ProtoAST);
     }
+    delete codeV;
   } else {
     // Skip token for error recovery.
     parser.getNextToken();
@@ -99,7 +106,7 @@ static void HandleExtern(Parser& parser) {
 static void HandleTopLevelExpression(Parser& parser, std::unique_ptr<llvm::orc::KaleidoscopeJIT>& TheJIT) {
   // Evaluate a top-level expression into an anonymous function.
   if (auto FnAST = parser.ParseTopLevelExpr()) {
-    FnAST->codegen();
+    //FnAST->codegen();
   } else {
     // Skip token for error recovery.
     parser.getNextToken();
