@@ -2,8 +2,8 @@
 
 #include "ast.h"
 
-llvm::LLVMContext TheContext;
-llvm::IRBuilder<> Builder(TheContext);
+std::unique_ptr<llvm::LLVMContext> TheContext;
+std::unique_ptr<llvm::IRBuilder<>> Builder;
 std::unique_ptr<llvm::Module> TheModule;
 std::unique_ptr<llvm::legacy::FunctionPassManager> TheFPM;
 std::map<std::string, llvm::AllocaInst *> NamedValues;
@@ -16,7 +16,7 @@ llvm::AllocaInst *CreateEntryBlockAlloca(llvm::Function *TheFunction,
     const std::string &VarName) {
   llvm::IRBuilder<> TmpB(&TheFunction->getEntryBlock(),
       TheFunction->getEntryBlock().begin());
-  return TmpB.CreateAlloca(llvm::Type::getDoubleTy(TheContext), 0, VarName.c_str());
+  return TmpB.CreateAlloca(llvm::Type::getDoubleTy(*TheContext), 0, VarName.c_str());
 }
 
 /// LogError* - These are little helper functions for error handling.
@@ -57,7 +57,7 @@ class codegenVisitor : public Visitor {
 public:
   llvm::Function* generatedCode;
   void visit(NumberExprAST* e) {
-    lastReturn = llvm::ConstantFP::get(TheContext, llvm::APFloat(e->Val));
+    lastReturn = llvm::ConstantFP::get(*TheContext, llvm::APFloat(e->Val));
   }
   void visit(VariableExprAST* e) {
     llvm::Value *V = NamedValues[e->Name];
@@ -67,7 +67,7 @@ public:
     }
 
     // Load the value
-    lastReturn = Builder.CreateLoad(V, e->Name.c_str());
+    lastReturn = Builder->CreateLoad(V, e->Name.c_str());
   }
   void visit(BinaryExprAST* e) {
     // Special case '=' because we don't want to emit the LHS as an expression
@@ -91,7 +91,7 @@ public:
         lastReturn = LogErrorV("Unknown variable name");
         return;
       }
-      Builder.CreateStore(Val, Variable);
+      Builder->CreateStore(Val, Variable);
       lastReturn = Val;
       return;
     }
@@ -107,18 +107,18 @@ public:
 
     switch (e->Op) {
       case '+':
-        lastReturn = Builder.CreateFAdd(L, R, "addtmp");
+        lastReturn = Builder->CreateFAdd(L, R, "addtmp");
         return;
       case '-':
-        lastReturn = Builder.CreateFSub(L, R, "subtmp");
+        lastReturn = Builder->CreateFSub(L, R, "subtmp");
         return;
       case '*':
-        lastReturn = Builder.CreateFMul(L, R, "multmp");
+        lastReturn = Builder->CreateFMul(L, R, "multmp");
         return;
       case '<':
-        L = Builder.CreateFCmpULT(L, R, "cmptmp");
+        L = Builder->CreateFCmpULT(L, R, "cmptmp");
         // Convert bool 0/1 to double 0.0 or 1.0
-        lastReturn = Builder.CreateUIToFP(L, llvm::Type::getDoubleTy(TheContext),
+        lastReturn = Builder->CreateUIToFP(L, llvm::Type::getDoubleTy(*TheContext),
             "booltmp");
         return;
       default:
@@ -129,7 +129,7 @@ public:
     assert(F && "binary operator not found!");
 
     llvm::Value *Ops[2] = {L, R};
-    lastReturn = Builder.CreateCall(F, Ops, "binop");
+    lastReturn = Builder->CreateCall(F, Ops, "binop");
   }
   void visit(CallExprAST* expr) {
     // Look up the name in the global module table.
@@ -155,13 +155,13 @@ public:
       }
     }
 
-    lastReturn = Builder.CreateCall(CalleeF, ArgsV, "calltmp");
+    lastReturn = Builder->CreateCall(CalleeF, ArgsV, "calltmp");
   }
   void visit(PrototypeAST* e) {
     // Make the function type:  double(double,double) etc.
-    std::vector<llvm::Type *> Doubles(e->Args.size(), llvm::Type::getDoubleTy(TheContext));
+    std::vector<llvm::Type *> Doubles(e->Args.size(), llvm::Type::getDoubleTy(*TheContext));
     llvm::FunctionType *FT =
-      llvm::FunctionType::get(llvm::Type::getDoubleTy(TheContext), Doubles, false);
+      llvm::FunctionType::get(llvm::Type::getDoubleTy(*TheContext), Doubles, false);
 
     llvm::Function *F =
       llvm::Function::Create(FT, llvm::Function::ExternalLinkage, e->Name, TheModule.get());
@@ -189,22 +189,22 @@ public:
       BinopPrecedence[P.getOperatorName()] = P.getBinaryPrecedence();
 
     // Create a new basic block to start insertion into.
-    llvm::BasicBlock *BB = llvm::BasicBlock::Create(TheContext, "entry", TheFunction);
-    Builder.SetInsertPoint(BB);
+    llvm::BasicBlock *BB = llvm::BasicBlock::Create(*TheContext, "entry", TheFunction);
+    Builder->SetInsertPoint(BB);
 
     // Record the function arguments in the NamedValues map.
     NamedValues.clear();
     for (auto &Arg : TheFunction->args()) {
       // Create an alloca
       llvm::AllocaInst *Alloca = CreateEntryBlockAlloca(TheFunction, std::string(Arg.getName()));
-      Builder.CreateStore(&Arg, Alloca);
+      Builder->CreateStore(&Arg, Alloca);
       NamedValues[std::string(Arg.getName())] = Alloca;
     }
 
     e->Body->accept(this);
     if (llvm::Value *RetVal = lastReturn) {
       // Finish off the function.
-      Builder.CreateRet(RetVal);
+      Builder->CreateRet(RetVal);
 
       // Validate the generated code, checking for consistency.
       llvm::verifyFunction(*TheFunction);
@@ -232,22 +232,22 @@ public:
     }
 
     // Convert condition to a bool by comparing non-equal to 0.0
-    CondV = Builder.CreateFCmpONE(
-        CondV, llvm::ConstantFP::get(TheContext, llvm::APFloat(0.0)), "ifcond");
+    CondV = Builder->CreateFCmpONE(
+        CondV, llvm::ConstantFP::get(*TheContext, llvm::APFloat(0.0)), "ifcond");
 
-    llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
+    llvm::Function *TheFunction = Builder->GetInsertBlock()->getParent();
 
     // Create blocks for the then and else cases.  Insert the 'then' block at the
     // end of the function.
     llvm::BasicBlock *ThenBB =
-      llvm::BasicBlock::Create(TheContext, "then", TheFunction);
-    llvm::BasicBlock *ElseBB = llvm::BasicBlock::Create(TheContext, "else");
-    llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(TheContext, "ifcont");
+      llvm::BasicBlock::Create(*TheContext, "then", TheFunction);
+    llvm::BasicBlock *ElseBB = llvm::BasicBlock::Create(*TheContext, "else");
+    llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(*TheContext, "ifcont");
 
-    Builder.CreateCondBr(CondV, ThenBB, ElseBB);
+    Builder->CreateCondBr(CondV, ThenBB, ElseBB);
 
     // Emit then value
-    Builder.SetInsertPoint(ThenBB);
+    Builder->SetInsertPoint(ThenBB);
 
     e->Then->accept(this);
     llvm::Value *ThenV = lastReturn;
@@ -256,13 +256,13 @@ public:
       return;
     }
 
-    Builder.CreateBr(MergeBB);
+    Builder->CreateBr(MergeBB);
     // Codegen of 'Then' can change the current block, update ThenBB for the PHI
-    ThenBB = Builder.GetInsertBlock();
+    ThenBB = Builder->GetInsertBlock();
 
     // Emit else block
     TheFunction->getBasicBlockList().push_back(ElseBB);
-    Builder.SetInsertPoint(ElseBB);
+    Builder->SetInsertPoint(ElseBB);
 
     e->Else->accept(this);
     llvm::Value *ElseV = lastReturn;
@@ -271,15 +271,15 @@ public:
       return;
     }
 
-    Builder.CreateBr(MergeBB);
+    Builder->CreateBr(MergeBB);
     // codegen of 'Else' an change the current block, update ElseBB for the PHI
-    ElseBB = Builder.GetInsertBlock();
+    ElseBB = Builder->GetInsertBlock();
 
     // Emit merge block
     TheFunction->getBasicBlockList().push_back(MergeBB);
-    Builder.SetInsertPoint(MergeBB);
+    Builder->SetInsertPoint(MergeBB);
     llvm::PHINode *PN =
-      Builder.CreatePHI(llvm::Type::getDoubleTy(TheContext), 2, "iftmp");
+      Builder->CreatePHI(llvm::Type::getDoubleTy(*TheContext), 2, "iftmp");
     PN->addIncoming(ThenV, ThenBB);
     PN->addIncoming(ElseV, ElseBB);
     lastReturn = PN;
@@ -287,7 +287,7 @@ public:
   void visit(ForExprAST* e) {
     // Make the new basic block for the loop header, inserting after current
     // block
-    llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
+    llvm::Function *TheFunction = Builder->GetInsertBlock()->getParent();
 
     // Create an alloca for the variable in the entry block
     llvm::AllocaInst *Alloca = CreateEntryBlockAlloca(TheFunction, e->VarName);
@@ -301,16 +301,16 @@ public:
     }
 
     // Store the value into the alloca
-    Builder.CreateStore(StartVal, Alloca);
+    Builder->CreateStore(StartVal, Alloca);
 
     llvm::BasicBlock *LoopBB =
-      llvm::BasicBlock::Create(TheContext, "loop", TheFunction);
+      llvm::BasicBlock::Create(*TheContext, "loop", TheFunction);
 
     // Insert an explicit fall through from the current block to the LoopBB
-    Builder.CreateBr(LoopBB);
+    Builder->CreateBr(LoopBB);
 
     // Start insertion in LoopBB
-    Builder.SetInsertPoint(LoopBB);
+    Builder->SetInsertPoint(LoopBB);
 
     // If the loop variable shadows an existing variable, we have to restore it.
     llvm::AllocaInst *OldVal = NamedValues[e->VarName];
@@ -336,7 +336,7 @@ public:
       }
     } else {
       // If not specified, use 1.0
-      StepVal = llvm::ConstantFP::get(TheContext, llvm::APFloat(1.0));
+      StepVal = llvm::ConstantFP::get(*TheContext, llvm::APFloat(1.0));
     }
 
     // Compute the end condition
@@ -347,23 +347,23 @@ public:
       return;
     }
 
-    llvm::Value *CurVar = Builder.CreateLoad(Alloca, e->VarName.c_str());
-    llvm::Value *NextVar = Builder.CreateFAdd(CurVar, StepVal, "nextvar");
-    Builder.CreateStore(NextVar, Alloca);
+    llvm::Value *CurVar = Builder->CreateLoad(Alloca, e->VarName.c_str());
+    llvm::Value *NextVar = Builder->CreateFAdd(CurVar, StepVal, "nextvar");
+    Builder->CreateStore(NextVar, Alloca);
 
     // Convert condition to a bool by comparing non-equal to 0.0
-    EndCond = Builder.CreateFCmpONE(
-        EndCond, llvm::ConstantFP::get(TheContext, llvm::APFloat(0.0)), "loopcond");
+    EndCond = Builder->CreateFCmpONE(
+        EndCond, llvm::ConstantFP::get(*TheContext, llvm::APFloat(0.0)), "loopcond");
 
     // Create the "after loop" block and insert it
     llvm::BasicBlock *AfterBB =
-      llvm::BasicBlock::Create(TheContext, "afterloop", TheFunction);
+      llvm::BasicBlock::Create(*TheContext, "afterloop", TheFunction);
 
     // Insert the conditional branch into the end of LoopEndBB.
-    Builder.CreateCondBr(EndCond, LoopBB, AfterBB);
+    Builder->CreateCondBr(EndCond, LoopBB, AfterBB);
 
     // Any new code will be inserted in AfterBB.
-    Builder.SetInsertPoint(AfterBB);
+    Builder->SetInsertPoint(AfterBB);
 
     // Restore the unshadowed variable
     if (OldVal)
@@ -372,7 +372,7 @@ public:
       NamedValues.erase(e->VarName);
 
     // for expr always returns 0.0
-    lastReturn = llvm::Constant::getNullValue(llvm::Type::getDoubleTy(TheContext));
+    lastReturn = llvm::Constant::getNullValue(llvm::Type::getDoubleTy(*TheContext));
   }
   void visit(UnaryExprAST* e) {
     e->Operand->accept(this);
@@ -388,11 +388,11 @@ public:
       return;
     }
 
-    lastReturn = Builder.CreateCall(F, OperandV, "unop");
+    lastReturn = Builder->CreateCall(F, OperandV, "unop");
   }
   void visit(VarExprAST* expr) {
     std::vector<llvm::AllocaInst *> OldBindings;
-    llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
+    llvm::Function *TheFunction = Builder->GetInsertBlock()->getParent();
 
     // Register all variables and emit their initializer
     for (unsigned i = 0, e = expr->VarNames.size(); i != e; ++i) {
@@ -409,11 +409,11 @@ public:
           return;
         }
       } else { // If not specified use 0.0
-        InitVal = llvm::ConstantFP::get(TheContext, llvm::APFloat(0.0));
+        InitVal = llvm::ConstantFP::get(*TheContext, llvm::APFloat(0.0));
       }
 
       llvm::AllocaInst *Alloca = CreateEntryBlockAlloca(TheFunction, VarName);
-      Builder.CreateStore(InitVal, Alloca);
+      Builder->CreateStore(InitVal, Alloca);
 
       // Remember the old variable binding to restore after the body
       OldBindings.push_back(NamedValues[VarName]);

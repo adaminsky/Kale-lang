@@ -46,12 +46,16 @@
 
 void InitializeModuleAndPassManager(std::unique_ptr<llvm::orc::KaleidoscopeJIT>& TheJIT) {
   // Open a new module.
-  TheModule = std::make_unique<llvm::Module>("my cool jit", TheContext);
+  TheContext = std::make_unique<llvm::LLVMContext>();
+  TheModule = std::make_unique<llvm::Module>("Kale Compiler", *TheContext);
   TheModule->setDataLayout(TheJIT->getTargetMachine().createDataLayout());
+
+  Builder = std::make_unique<llvm::IRBuilder<>>(*TheContext);
 
   // Create a new pass manager attached to it.
   TheFPM = std::make_unique<llvm::legacy::FunctionPassManager>(TheModule.get());
 
+#if 0
   // Promote allocas to registers
   TheFPM->add(llvm::createPromoteMemoryToRegisterPass());
   // Do simple "peephole" optimizations and bit-twiddling optzns.
@@ -62,6 +66,7 @@ void InitializeModuleAndPassManager(std::unique_ptr<llvm::orc::KaleidoscopeJIT>&
   TheFPM->add(llvm::createGVNPass());
   // Simplify the control flow graph (deleting unreachable blocks, etc).
   TheFPM->add(llvm::createCFGSimplificationPass());
+#endif
 
   TheFPM->doInitialization();
 }
@@ -74,14 +79,11 @@ static void HandleDefinition(Parser& parser, std::unique_ptr<llvm::orc::Kaleidos
   if (auto FnAST = parser.ParseDefinition()) {
     codegenVisitor* codeV = new codegenVisitor();
     FnAST->accept(codeV);
-    if (llvm::Function *FnIR = codeV->generatedCode) {
-      fprintf(stderr, "Parsed a function definition.\n");
-      FnIR->print(llvm::errs());
-      fprintf(stderr, "\n");
+    if (!codeV->generatedCode) {
+      fprintf(stderr, "Error in parsing a function definition.\n");
     }
     delete codeV;
   } else {
-      fprintf(stderr, "ERROR\n");
     // Skip token for error recovery.
     parser.getNextToken();
   }
@@ -91,10 +93,8 @@ static void HandleExtern(Parser& parser) {
   if (auto ProtoAST = parser.ParseExtern()) {
     codegenVisitor* codeV = new codegenVisitor();
     ProtoAST->accept(codeV);
-    if (llvm::Function *FnIR = codeV->generatedCode) {
-      fprintf(stderr, "Parsed an extern\n");
-      FnIR->print(llvm::errs());
-      fprintf(stderr, "\n");
+    if (codeV->generatedCode) {
+      // FnIR->print(llvm::errs());
       FunctionProtos[ProtoAST->getName()] = std::move(ProtoAST);
     }
     delete codeV;
@@ -107,7 +107,10 @@ static void HandleExtern(Parser& parser) {
 static void HandleTopLevelExpression(Parser& parser, std::unique_ptr<llvm::orc::KaleidoscopeJIT>& TheJIT) {
   // Evaluate a top-level expression into an anonymous function.
   if (auto FnAST = parser.ParseTopLevelExpr()) {
-    //FnAST->codegen();
+    codegenVisitor* codeV = new codegenVisitor();
+    FnAST->accept(codeV);
+    if (!codeV->generatedCode)
+        fprintf(stderr, "Error in top level expr\n");
   } else {
     // Skip token for error recovery.
     parser.getNextToken();
@@ -117,7 +120,6 @@ static void HandleTopLevelExpression(Parser& parser, std::unique_ptr<llvm::orc::
 /// top ::= definition | external | expression | ';'
 static void MainLoop(std::unique_ptr<llvm::orc::KaleidoscopeJIT> TheJIT, Parser& parser) {
   while (true) {
-    fprintf(stderr, "ready> ");
     switch (parser._curTok) {
     case tok_eof:
       return;
@@ -182,7 +184,6 @@ int main() {
   BinopPrecedence['*'] = 40; // highest.
 
   // Prime the first token.
-  fprintf(stderr, "ready> ");
   parser.getNextToken();
 
   InitializeModuleAndPassManager(TheJIT);
@@ -234,6 +235,7 @@ int main() {
   }
 
   pass.run(*TheModule);
+  TheModule->print(llvm::errs(), nullptr);
   dest.flush();
   llvm::outs() << "Wrote " << Filename << "\n";
 

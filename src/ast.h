@@ -9,8 +9,8 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LegacyPassManager.h"
 
-extern llvm::LLVMContext TheContext;
-extern llvm::IRBuilder<> Builder;
+extern std::unique_ptr<llvm::LLVMContext> TheContext;
+extern std::unique_ptr<llvm::IRBuilder<>> Builder;
 extern std::unique_ptr<llvm::Module> TheModule;
 extern std::unique_ptr<llvm::legacy::FunctionPassManager> TheFPM;
 extern std::map<std::string, llvm::AllocaInst *> NamedValues;

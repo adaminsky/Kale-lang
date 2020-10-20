@@ -19,14 +19,28 @@ build.
 
 ## Running
 
-Execute `./Kale` and then type in your program. An example interactive session
-is shown below:
+Execute `./Kale` and then type in your program. Alternatively, pipe the text of
+the program into stdin like the following:
 
 ```sh
-ready> extern cos(x);
-...
-ready> cos(1.2345);
+./Kale < fib.kl
 ```
 
-Ending the session with CTRL-d writes the object output.o. This file can then
-be linked into a C/C++ program.
+An object file is output called output.o and the LLVM IR is dumped to stderr.
+To try running a program, pipe stderr into another file and then call
+clang on that. In the following example, I am using `printd` which is defined
+in the print\_dyn.cc file and created as the shared library "libprint". To
+link with this library, do the following:
+
+```sh
+./Kale < fib.kl 2> fib.ir
+clang -x ir fib.ir -L. -lprint
+```
+
+This assumes that you are executing the above commands in the `build/` folder.
+Finally, to correctly run the program with the dynamic library, the
+`LD_LIBRARY_PATH` must be set to the directory where `libprint.so` is located
+which is probably the current build directory.
+
+Another way that a Kale program can be used is by linking with a C/C++
+program by using the `output.o` file as an input to a clang build.
