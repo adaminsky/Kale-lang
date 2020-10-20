@@ -61,8 +61,10 @@ public:
   }
   void visit(VariableExprAST* e) {
     llvm::Value *V = NamedValues[e->Name];
-    if (!V)
+    if (!V) {
       lastReturn = LogErrorV("Unknown variable name");
+      return;
+    }
 
     // Load the value
     lastReturn = Builder.CreateLoad(V, e->Name.c_str());
@@ -71,41 +73,54 @@ public:
     // Special case '=' because we don't want to emit the LHS as an expression
     if (e->Op == '=') {
       VariableExprAST *LHSE = static_cast<VariableExprAST*>(e->LHS.get());
-      if (!LHSE)
+      if (!LHSE) {
         lastReturn = LogErrorV("destination of '=' must be a variable");
+        return;
+      }
 
       // Codegen the RHS
       e->RHS->accept(this);
       llvm::Value *Val = lastReturn;
-      if (!Val)
+      if (!Val) {
         lastReturn = nullptr;
+        return;
+      }
 
       llvm::Value *Variable = NamedValues[std::string(LHSE->getName())];
-      if (!Variable)
+      if (!Variable) {
         lastReturn = LogErrorV("Unknown variable name");
+        return;
+      }
       Builder.CreateStore(Val, Variable);
       lastReturn = Val;
+      return;
     }
 
     e->LHS->accept(this);
     llvm::Value *L = lastReturn;
     e->RHS->accept(this);
     llvm::Value *R = lastReturn;
-    if (!L || !R)
+    if (!L || !R) {
       lastReturn = nullptr;
+      return;
+    }
 
     switch (e->Op) {
       case '+':
         lastReturn = Builder.CreateFAdd(L, R, "addtmp");
+        return;
       case '-':
         lastReturn = Builder.CreateFSub(L, R, "subtmp");
+        return;
       case '*':
         lastReturn = Builder.CreateFMul(L, R, "multmp");
+        return;
       case '<':
         L = Builder.CreateFCmpULT(L, R, "cmptmp");
         // Convert bool 0/1 to double 0.0 or 1.0
         lastReturn = Builder.CreateUIToFP(L, llvm::Type::getDoubleTy(TheContext),
             "booltmp");
+        return;
       default:
         break;
     }
@@ -119,19 +134,25 @@ public:
   void visit(CallExprAST* expr) {
     // Look up the name in the global module table.
     llvm::Function *CalleeF = getFunction(expr->Callee);
-    if (!CalleeF)
+    if (!CalleeF) {
       lastReturn = LogErrorV("Unknown function referenced");
+      return;
+    }
 
     // If argument mismatch error.
-    if (CalleeF->arg_size() != expr->Args.size())
+    if (CalleeF->arg_size() != expr->Args.size()) {
       lastReturn = LogErrorV("Incorrect # arguments passed");
+      return;
+    }
 
     std::vector<llvm::Value *> ArgsV;
     for (unsigned i = 0, e = expr->Args.size(); i != e; ++i) {
       expr->Args[i]->accept(this);
       ArgsV.push_back(lastReturn);
-      if (!ArgsV.back())
+      if (!ArgsV.back()) {
         lastReturn = nullptr;
+        return;
+      }
     }
 
     lastReturn = Builder.CreateCall(CalleeF, ArgsV, "calltmp");
@@ -158,8 +179,10 @@ public:
     auto & P = *e->Proto;
     FunctionProtos[e->Proto->getName()] = std::move(e->Proto);
     llvm::Function *TheFunction = getFunction(P.getName());
-    if (!TheFunction)
+    if (!TheFunction) {
       generatedCode = nullptr;
+      return;
+    }
 
     // If this is an operator, install it
     if (P.isBinaryOp())
@@ -190,6 +213,7 @@ public:
       TheFPM->run(*TheFunction);
 
       generatedCode = TheFunction;
+      return;
     }
 
     // Error reading body, remove function.
@@ -202,8 +226,10 @@ public:
   void visit(IfExprAST* e) {
     e->Cond->accept(this);
     llvm::Value *CondV = lastReturn;
-    if (!CondV)
+    if (!CondV) {
       lastReturn = nullptr;
+      return;
+    }
 
     // Convert condition to a bool by comparing non-equal to 0.0
     CondV = Builder.CreateFCmpONE(
@@ -225,8 +251,10 @@ public:
 
     e->Then->accept(this);
     llvm::Value *ThenV = lastReturn;
-    if (!ThenV)
+    if (!ThenV) {
       lastReturn = nullptr;
+      return;
+    }
 
     Builder.CreateBr(MergeBB);
     // Codegen of 'Then' can change the current block, update ThenBB for the PHI
@@ -238,8 +266,10 @@ public:
 
     e->Else->accept(this);
     llvm::Value *ElseV = lastReturn;
-    if (!ElseV)
+    if (!ElseV) {
       lastReturn = nullptr;
+      return;
+    }
 
     Builder.CreateBr(MergeBB);
     // codegen of 'Else' an change the current block, update ElseBB for the PHI
@@ -265,8 +295,10 @@ public:
     // Emit the start code first, without 'variable' in scope
     e->Start->accept(this);
     llvm::Value *StartVal = lastReturn;
-    if (!StartVal)
+    if (!StartVal) {
       lastReturn = nullptr;
+      return;
+    }
 
     // Store the value into the alloca
     Builder.CreateStore(StartVal, Alloca);
@@ -288,16 +320,20 @@ public:
     // current BB.  Note that we ignore the value computed by the body, but don't
     // allow an error.
     e->Body->accept(this);
-    if (!lastReturn)
+    if (!lastReturn) {
       lastReturn = nullptr;
+      return;
+    }
 
     // Emit the setp value
     llvm::Value *StepVal = nullptr;
     if (e->Step) {
       e->Step->accept(this);
       StepVal = lastReturn;
-      if (!StepVal)
+      if (!StepVal) {
         lastReturn = nullptr;
+        return;
+      }
     } else {
       // If not specified, use 1.0
       StepVal = llvm::ConstantFP::get(TheContext, llvm::APFloat(1.0));
@@ -306,8 +342,10 @@ public:
     // Compute the end condition
     e->End->accept(this);
     llvm::Value *EndCond = lastReturn;
-    if (!EndCond)
+    if (!EndCond) {
       lastReturn = nullptr;
+      return;
+    }
 
     llvm::Value *CurVar = Builder.CreateLoad(Alloca, e->VarName.c_str());
     llvm::Value *NextVar = Builder.CreateFAdd(CurVar, StepVal, "nextvar");
@@ -339,12 +377,16 @@ public:
   void visit(UnaryExprAST* e) {
     e->Operand->accept(this);
     llvm::Value *OperandV = lastReturn;
-    if (!OperandV)
+    if (!OperandV) {
       lastReturn = nullptr;
+      return;
+    }
 
     llvm::Function *F = getFunction(std::string("unary") + e->Opcode);
-    if (!F)
+    if (!F) {
       lastReturn = LogErrorV("Unknown unary operator");
+      return;
+    }
 
     lastReturn = Builder.CreateCall(F, OperandV, "unop");
   }
@@ -362,8 +404,10 @@ public:
       if (Init) {
         Init->accept(this);
         InitVal = lastReturn;
-        if (!InitVal)
+        if (!InitVal) {
           lastReturn = nullptr;
+          return;
+        }
       } else { // If not specified use 0.0
         InitVal = llvm::ConstantFP::get(TheContext, llvm::APFloat(0.0));
       }
@@ -379,8 +423,10 @@ public:
     // Codegen the body
     expr->Body->accept(this);
     llvm::Value *BodyVal = lastReturn;
-    if (!BodyVal)
+    if (!BodyVal) {
       lastReturn = nullptr;
+      return;
+    }
 
     for (unsigned i = 0, e = expr->VarNames.size(); i != e; ++i)
       NamedValues[expr->VarNames[i].first] = OldBindings[i];

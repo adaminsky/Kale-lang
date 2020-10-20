@@ -81,6 +81,7 @@ static void HandleDefinition(Parser& parser, std::unique_ptr<llvm::orc::Kaleidos
     }
     delete codeV;
   } else {
+      fprintf(stderr, "ERROR\n");
     // Skip token for error recovery.
     parser.getNextToken();
   }
